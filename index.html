@@ -16,7 +16,7 @@
             --success: #00D68F;
             --danger: #FF4B4B;
             --gold: #FFD700;
-            --whatsapp: #25D366; /* Couleur WhatsApp */
+            --whatsapp: #25D366;
         }
 
         body {
@@ -37,6 +37,7 @@
         .header h1 { margin: 0; font-size: 2.2rem; letter-spacing: 3px; text-transform: uppercase; color: var(--primary-color); }
 
         .btn-export { background: transparent; border: 1px solid var(--primary-color); color: var(--primary-color); padding: 8px 18px; border-radius: 10px; cursor: pointer; font-weight: bold; }
+        .btn-logout { background: #eee; border: none; padding: 8px 15px; border-radius: 10px; cursor: pointer; font-size: 12px; margin-left: 10px; }
 
         .top-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; margin-bottom: 30px; }
 
@@ -53,7 +54,6 @@
 
         .btn-main { background: var(--primary-color); color: white; padding: 14px 28px; border: none; border-radius: 12px; font-weight: 800; cursor: pointer; text-transform: uppercase; }
 
-        /* FILTRES */
         .filter-bar { display: flex; gap: 10px; margin-bottom: 15px; }
         .btn-filter { background: white; border: 1px solid var(--primary-color); color: var(--primary-color); padding: 8px 15px; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 12px; }
         .btn-filter.active { background: var(--primary-color); color: white; }
@@ -69,7 +69,6 @@
         .client-info b { display: inline-block; font-size: 17px; color: #333; cursor: pointer; transition: 0.2s; }
         .client-info b:hover { color: var(--primary-color); text-decoration: underline; }
 
-        /* ALERTES RELANCE */
         .status-alert { color: var(--danger); font-size: 10px; font-weight: 900; margin-top: 4px; display: block; text-transform: uppercase; }
 
         .gift-badge { background: var(--gold); color: #000; font-size: 10px; font-weight: 900; padding: 4px 8px; border-radius: 50px; margin-left: 10px; vertical-align: middle; animation: pulse-gold 1.5s infinite; display: inline-flex; align-items: center; gap: 4px; }
@@ -90,7 +89,6 @@
         .btn-del { background: #FFEBEB; color: var(--danger); }
         .btn-wa { background: #E8F5E9; color: var(--whatsapp); font-size: 18px; }
 
-        /* MODAL */
         .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center; backdrop-filter: blur(5px); }
         .modal-content { background: #FFF; padding: 30px; border-radius: var(--border-radius); width: 90%; max-width: 550px; max-height: 85vh; overflow-y: auto; }
         
@@ -189,7 +187,10 @@
 <div class="container">
     <div class="header">
         <h1>Barber<span style="font-weight: 200;">Shop</span></h1>
-        <button class="btn-export" id="btnExport">💾 Exporter (CSV)</button>
+        <div>
+            <button class="btn-export" id="btnExport">💾 Exporter (CSV)</button>
+            <button class="btn-logout" id="btnLogout">Déconnexion 🚪</button>
+        </div>
     </div>
 
     <div class="top-grid">
@@ -238,17 +239,36 @@
     let currentClientPoints = 0;
     let isEditing = false;
     let currentFilter = 'all';
+    let currentUser = null;
 
     const cadeauxDispos = [
         { nom: "Soin Barbe Offert", prix: 50 },
         { nom: "Coupe Gratuite", prix: 100 }
     ];
 
-    // CHARGEMENT INITIAL (Avec Visites pour calcul relance)
+    // VERIFICATION AUTHENTIFICATION
+    async function checkUser() {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            window.location.href = 'login.html'; // Redirige si pas connecté
+        } else {
+            currentUser = session.user;
+            loadClients();
+        }
+    }
+
+    // DECONNEXION
+    document.getElementById('btnLogout').onclick = async () => {
+        await supabase.auth.signOut();
+        window.location.href = 'login.html';
+    };
+
+    // CHARGEMENT INITIAL (Filtré par salon)
     async function loadClients() {
         const { data, error } = await supabase
             .from('clients')
             .select('*, visites(created_at)')
+            .eq('user_id', currentUser.id) // <--- ICI LA SECURITÉ
             .order('Nom', { ascending: true });
         
         if (data) {
@@ -264,61 +284,58 @@
             renderTable();
         }
     }
-    // DESSIN DU TABLEAU
-function renderTable() {
-    const tbody = document.getElementById('clientBody');
-    tbody.innerHTML = ''; 
-    
-    let filtered = allClients;
-    if(currentFilter === 'lost') {
-        filtered = allClients.filter(c => c.jours >= 30);
+
+    function renderTable() {
+        const tbody = document.getElementById('clientBody');
+        tbody.innerHTML = ''; 
+        
+        let filtered = allClients;
+        if(currentFilter === 'lost') {
+            filtered = allClients.filter(c => c.jours >= 30);
+        }
+
+        filtered.forEach(client => {
+            const pts = client.Points || 0;
+            const hasFreeCut = pts >= 100;
+            const isLost = client.jours >= 30;
+
+            tbody.innerHTML += `
+                <tr>
+                    <td class="client-info">
+                        <b class="client-name-click" data-id="${client.id}">
+                            ${client.Nom}
+                            ${hasFreeCut ? '<span class="gift-badge">✨ COUPE OFFERTE</span>' : ''}
+                        </b>
+                        ${isLost ? `<span class="status-alert">⚠️ Absent depuis ${client.jours} jours</span>` : ''}
+                        <br><small style="color:#999">${client.Telephone || '---'}</small>
+                    </td>
+                    <td>
+                        <span class="points-badge">${pts} PTS</span>
+                        <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(pts, 100)}%"></div></div>
+                    </td>
+                    <td style="display:flex; gap:8px; align-items:center;">
+                        <button class="btn-action btn-plus" data-id="${client.id}" data-pts="${pts}">+</button>
+                        <button class="btn-action btn-moins" data-id="${client.id}" data-pts="${pts}">-</button>
+                        ${isLost ? `<button class="btn-action btn-wa" onclick="relancer('${client.Nom}', '${client.Telephone}')">📱</button>` : ''}
+                        <button class="btn-action btn-del" data-id="${client.id}">🗑</button>
+                    </td>
+                </tr>`;
+        });
+
+        document.querySelectorAll('.client-name-click').forEach(b => {
+            b.onclick = () => openHisto(b.getAttribute('data-id'));
+        });
+        document.querySelectorAll('.btn-plus').forEach(b => {
+            b.onclick = () => updatePts(b.getAttribute('data-id'), parseInt(b.getAttribute('data-pts')) + 10);
+        });
+        document.querySelectorAll('.btn-moins').forEach(b => {
+            b.onclick = () => updatePts(b.getAttribute('data-id'), parseInt(b.getAttribute('data-pts')) - 10);
+        });
+        document.querySelectorAll('.btn-del').forEach(b => {
+            b.onclick = () => deleteClient(b.getAttribute('data-id'));
+        });
     }
 
-    filtered.forEach(client => {
-        const pts = client.Points || 0;
-        const hasFreeCut = pts >= 100;
-        const isLost = client.jours >= 30;
-
-        tbody.innerHTML += `
-            <tr>
-                <td class="client-info">
-                    <b class="client-name-click" data-id="${client.id}">
-                        ${client.Nom}
-                        ${hasFreeCut ? '<span class="gift-badge">✨ COUPE OFFERTE</span>' : ''}
-                    </b>
-                    ${isLost ? `<span class="status-alert">⚠️ Absent depuis ${client.jours} jours</span>` : ''}
-                    <br><small style="color:#999">${client.Telephone || '---'}</small>
-                </td>
-                <td>
-                    <span class="points-badge">${pts} PTS</span>
-                    <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(pts, 100)}%"></div></div>
-                </td>
-                <td style="display:flex; gap:8px; align-items:center;">
-                    <button class="btn-action btn-plus" data-id="${client.id}" data-pts="${pts}">+</button>
-                    <button class="btn-action btn-moins" data-id="${client.id}" data-pts="${pts}">-</button>
-                    ${isLost ? `<button class="btn-action btn-wa" onclick="relancer('${client.Nom}', '${client.Telephone}')">📱</button>` : ''}
-                    <button class="btn-action btn-del" data-id="${client.id}">🗑</button>
-                </td>
-            </tr>`;
-    });
-
-    // Liaison des boutons
-    document.querySelectorAll('.client-name-click').forEach(b => {
-        b.onclick = () => openHisto(b.getAttribute('data-id'));
-    });
-    document.querySelectorAll('.btn-plus').forEach(b => {
-        b.onclick = () => updatePts(b.getAttribute('data-id'), parseInt(b.getAttribute('data-pts')) + 10);
-    });
-    // RE-VOICI LE BOUTON MOINS :
-    document.querySelectorAll('.btn-moins').forEach(b => {
-        b.onclick = () => updatePts(b.getAttribute('data-id'), parseInt(b.getAttribute('data-pts')) - 10);
-    });
-    document.querySelectorAll('.btn-del').forEach(b => {
-        b.onclick = () => deleteClient(b.getAttribute('data-id'));
-    });
-}
-
-    // FILTRES
     window.updateFilter = (f) => {
         currentFilter = f;
         document.getElementById('btnAll').classList.toggle('active', f === 'all');
@@ -326,37 +343,30 @@ function renderTable() {
         renderTable();
     };
 
-    // RELANCE WHATSAPP
     window.relancer = (nom, tel) => {
         if(!tel || tel === '---') return showToast("Pas de numéro !", false);
         const msg = `Salut ${nom} ! C'est ton barbier ✂️. On ne t'a pas vu au shop depuis un petit moment, j'espère que tout va bien ? À bientôt !`;
         window.open(`https://wa.me/${tel.replace(/\s/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
     };
 
-    // OUVERTURE DE LA FICHE
     async function openHisto(id) {
         const client = allClients.find(c => c.id == id);
         if(!client) return;
-
         currentClientId = id; 
         currentClientPoints = client.Points || 0;
-        
         isEditing = false;
         document.getElementById('profileView').style.display = 'grid';
         document.getElementById('profileEdit').style.display = 'none';
         document.getElementById('btnToggleEdit').innerText = 'Modifier ✏️';
-
         document.getElementById('histoTitle').innerText = client.Nom;
         document.getElementById('mPoints').innerText = currentClientPoints + " PTS";
         document.getElementById('mTel').innerText = client.Telephone || "Non renseigné";
         document.getElementById('mEmail').innerText = client.Email || "Non renseigné";
         document.getElementById('mAddr').innerText = client.Adresse || "Non renseigné";
-
         document.getElementById('editNom').value = client.Nom;
         document.getElementById('editTel').value = client.Telephone || "";
         document.getElementById('editEmail').value = client.Email || "";
         document.getElementById('editAddr').value = client.Adresse || "";
-
         document.getElementById('histoModal').style.display = 'flex';
         renderGiftList();
         renderHistoItems();
@@ -374,13 +384,10 @@ function renderTable() {
         const nouveauTel = document.getElementById('editTel').value;
         const nouvelEmail = document.getElementById('editEmail').value;
         const nouvelleAddr = document.getElementById('editAddr').value;
-
         if(!nouveauNom) return showToast("Le nom est obligatoire", false);
-
         const { error } = await supabase.from('clients').update({ 
             Nom: nouveauNom, Telephone: nouveauTel, Email: nouvelEmail, Adresse: nouvelleAddr 
         }).eq('id', currentClientId);
-
         if (error) showToast("Erreur de sauvegarde", false);
         else {
             showToast("Profil mis à jour !");
@@ -404,7 +411,6 @@ function renderTable() {
         const { data } = await supabase.from('visites').select('*').eq('client_id', currentClientId).order('created_at', {ascending: false});
         const list = document.getElementById('histoList');
         list.innerHTML = (data && data.length) ? '' : '<p style="color:#999; text-align:center;">Aucun historique</p>';
-        
         if (data) {
             data.forEach(v => {
                 const date = new Date(v.created_at).toLocaleDateString('fr-FR');
@@ -448,7 +454,6 @@ function renderTable() {
             btn.className = `btn-redeem ${estDisponible ? 'active' : 'locked'}`;
             btn.innerText = estDisponible ? 'Utiliser' : 'Points insuffisants';
             if(estDisponible) btn.onclick = () => utiliserCadeau(cadeau.nom, cadeau.prix);
-
             const div = document.createElement('div');
             div.className = 'gift-item';
             div.innerHTML = `<span>${cadeau.nom} <small>(${cadeau.prix}pts)</small></span>`;
@@ -470,7 +475,6 @@ function renderTable() {
     document.getElementById('searchBar').oninput = (e) => {
         const s = e.target.value.toLowerCase();
         const res = allClients.filter(c => c.Nom.toLowerCase().includes(s) || (c.Telephone && c.Telephone.includes(s)));
-        // On simule un render partiel pour la recherche
         const oldClients = allClients;
         allClients = res; renderTable(); allClients = oldClients;
     };
@@ -481,7 +485,10 @@ function renderTable() {
         const Email = document.getElementById('newEmail').value;
         const Adresse = document.getElementById('newAddr').value;
         if(Nom) {
-            await supabase.from('clients').insert([{ Nom, Telephone, Email, Adresse, Points: 0 }]);
+            await supabase.from('clients').insert([{ 
+                Nom, Telephone, Email, Adresse, Points: 0, 
+                user_id: currentUser.id // <--- RATTACHEMENT AU SALON
+            }]);
             document.querySelectorAll('.grid-form input').forEach(i => i.value = '');
             await loadClients();
             showToast("Client créé !");
@@ -518,7 +525,7 @@ function renderTable() {
         x.className = "show"; setTimeout(() => { x.className = ""; }, 3000);
     }
 
-    loadClients();
+    checkUser(); // <--- LANCEMENT
 </script>
 </body>
 </html>
