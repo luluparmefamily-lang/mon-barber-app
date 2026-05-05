@@ -10,33 +10,49 @@
         h1 { color: #D4A5A5; margin-bottom: 30px; text-transform: uppercase; letter-spacing: 2px; }
         input { width: 100%; padding: 15px; margin-bottom: 15px; border: 1px solid #DDD; border-radius: 10px; box-sizing: border-box; }
         button { width: 100%; padding: 15px; border: none; border-radius: 10px; background: #D4A5A5; color: white; font-weight: bold; cursor: pointer; font-size: 16px; }
-        .error { color: #FF4B4B; font-size: 14px; margin-top: 10px; }
+        button:hover { background: #b88a8a; }
+        .error { color: #FF4B4B; font-size: 14px; margin-top: 10px; display: none; }
     </style>
 </head>
 <body>
-    <div class="login-card">
-        <h1>Connexion</h1>
-        <input type="email" id="email" placeholder="Email du salon">
-        <input type="password" id="pass" placeholder="Mot de passe">
-        <button id="btnLogin">Se connecter</button>
-        <div id="msg" class="error"></div>
-    </div>
 
-    <script type="module">
-        import { createClient } from 'https://jspm.dev/@supabase/supabase-js'
-        const supabase = createClient('https://suxqpgkdgwordhoffrpl.supabase.co', 'sb_publishable_Wih7gy1d2OX6S57Qv6drKw_5p1UJ2C2')
+<div class="login-card">
+    <h1>Connexion</h1>
+    <input type="email" id="email" placeholder="Email du salon">
+    <input type="password" id="password" placeholder="Mot de passe">
+    <button id="loginBtn">SE CONNECTER</button>
+    <div id="errorMsg" class="error">Identifiants incorrects</div>
+</div>
 
-        document.getElementById('btnLogin').onclick = async () => {
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('pass').value;
-            const { error } = await supabase.auth.signInWithPassword({ email, password });
-            
-            if (error) {
-                document.getElementById('msg').innerText = "Erreur : " + error.message;
-            } else {
-                window.location.href = 'index.html';
-            }
-        };
-    </script>
+<script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    // REMPLACE CES DEUX LIGNES PAR TES VRAIES CLÉS SUPABASE
+    const supabaseUrl = 'https://TON_PROJET.supabase.co'
+    const supabaseKey = 'TA_CLE_ANON_ICI'
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    const loginBtn = document.getElementById('loginBtn');
+    const emailInput = document.getElementById('email');
+    const passInput = document.getElementById('password');
+    const errorMsg = document.getElementById('errorMsg');
+
+    loginBtn.onclick = async () => {
+        errorMsg.style.display = 'none';
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: emailInput.value,
+            password: passInput.value,
+        });
+
+        if (error) {
+            errorMsg.innerText = "Erreur : " + error.message;
+            errorMsg.style.display = 'block';
+        } else {
+            // Redirige vers l'index si ça marche
+            window.location.href = 'index.html';
+        }
+    };
+</script>
+
 </body>
 </html>
